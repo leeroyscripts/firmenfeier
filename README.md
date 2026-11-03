@@ -34,6 +34,8 @@ Dann http://localhost:8000 öffnen. `?debug` zeigt Kamerawerte im HUD an (zum Ei
 
 ## Auf GitHub Pages veröffentlichen
 
+Ziel: https://leeroyscripts.github.io/firmenfeier/ (Repo `leeroyscripts/firmenfeier`). Allgemeiner Ablauf:
+
 1. Auf github.com ein neues Repository anlegen (z. B. `firmenfeier`). Für GitHub Pages im kostenlosen
    Konto muss es **öffentlich** sein.
 2. Dieses Verzeichnis hochladen:
