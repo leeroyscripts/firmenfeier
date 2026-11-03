@@ -117,9 +117,10 @@ export class Orbit {
 
   _key(e) {
     const step = e.shiftKey ? 15 : 5;
+    // left/right arrows switch scenes (main.js); A/D turn
     const map = {
-      ArrowLeft: () => (this.goal.yaw += step),
-      ArrowRight: () => (this.goal.yaw -= step),
+      a: () => (this.goal.yaw = this._clampYaw(this.goal.yaw + step)),
+      d: () => (this.goal.yaw = this._clampYaw(this.goal.yaw - step)),
       ArrowUp: () => (this.goal.pitch = clamp(this.goal.pitch + step, ...this.limits.pitch)),
       ArrowDown: () => (this.goal.pitch = clamp(this.goal.pitch - step, ...this.limits.pitch)),
       '+': () => (this.goal.dist = clamp(this.goal.dist * 0.88, ...this.limits.dist)),
@@ -158,6 +159,18 @@ export class Orbit {
     // keep the target inside the scene box
     const b = this.limits.target;
     t.set(clamp(t.x, b[0], b[3]), clamp(t.y, b[1], b[4]), clamp(t.z, b[2], b[5]));
+  }
+
+  // Cut to another scene: new home and limits, camera placed at home at once.
+  setView(view) {
+    this.home = view;
+    this.limits = view.limits;
+    this.autoSpeed = view.autoSpeed ?? 5;
+    this.target.set(...view.target);
+    this.yaw = view.yaw; this.pitch = view.pitch; this.dist = view.dist;
+    this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
+    this.vel.yaw = this.vel.pitch = 0;
+    this.autoDir = 1; this.autoVel = 0; this.autoRamp = 0; this.swayT = 0;
   }
 
   reset() {

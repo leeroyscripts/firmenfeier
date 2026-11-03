@@ -52,7 +52,7 @@
 
     <div class="hud-block hud-tl">
       <div class="row"><span class="dot live"></span><span class="label" data-scramble>GS//VIEWER</span><span class="val">v1.0</span></div>
-      <div class="row dim"><span class="label">SCAN</span><span class="val">001 · GROUP</span></div>
+      <div class="row dim"><span class="label">SCAN</span><span class="val" id="hud-scan">001 · GROUP</span></div>
       <div class="row dim"><span class="label">MODE</span><span class="val" id="hud-mode">ORBIT</span></div>
     </div>
 
@@ -83,8 +83,18 @@
 
     <div class="reticle"><i></i></div>
 
-    <div class="hud-hint" id="hud-hint">DRAG&nbsp;·&nbsp;ROTATE &nbsp; / &nbsp; SCROLL&nbsp;·&nbsp;ZOOM &nbsp; / &nbsp; RIGHT-DRAG&nbsp;·&nbsp;PAN</div>
+    <div class="hud-hint" id="hud-hint">DRAG&nbsp;·&nbsp;ROTATE &nbsp; / &nbsp; SCROLL&nbsp;·&nbsp;ZOOM &nbsp; / &nbsp; RIGHT-DRAG&nbsp;·&nbsp;PAN &nbsp; / &nbsp; ←&nbsp;→&nbsp;·&nbsp;SCENE</div>
   </div>
+
+  <!-- Scene switch -->
+  <button type="button" class="nav-btn prev" id="btn-prev" aria-label="Zurück">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5 7.5 12l7 7" /></svg>
+    <span class="nav-label" id="nav-prev-label"></span>
+  </button>
+  <button type="button" class="nav-btn next" id="btn-next" aria-label="Weiter">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5l7 7-7 7" /></svg>
+    <span class="nav-label" id="nav-next-label"></span>
+  </button>
 
   <div class="controls">
     <button type="button" id="btn-auto" aria-pressed="true" title="Automatisch drehen">AUTO</button>

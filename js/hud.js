@@ -78,7 +78,7 @@ export class Hud {
 
 // Decode-style text reveal for small HUD labels.
 export function scramble(el, { duration = 900, delay = 0 } = {}) {
-  const final = el.textContent;
+  const final = (el.dataset.final ??= el.textContent); // safe to call again mid-scramble
   const glyphs = '01<>/\\|_-+=*#%ABCDEFGHJKLMNPQRSTUVWXYZ';
   const start = performance.now() + delay;
   el.textContent = final.replace(/\S/g, ' ');
