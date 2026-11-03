@@ -1,0 +1,261 @@
+// FIRMENFEIER · Gaussian splat display (PlayCanvas 2.23.3, WebGL2)
+import * as pc from 'playcanvas';
+import { Orbit } from './orbit.js';
+import { SplatFx } from './splat-fx.js';
+import { Hud, scramble } from './hud.js';
+
+// ─── scene setup (tune here) ──────────────────────────────────────────────
+const SCENE = {
+  url: 'assets/scene.sog',
+  bytes: 17305262,          // fallback when the server sends no Content-Length
+  splats: 995790,
+  rotation: [-90, 0, 0],    // scan is z-up -> PlayCanvas y-up
+  view: {
+    // the scan was captured from the head of the table; this is that viewpoint
+    target: [0, 0.35, -0.45],
+    yaw: 5, pitch: 16, dist: 3.7,
+    autoSpeed: 3.2,         // deg/s while idle
+    autoRange: [-13, 15],   // idle sway relative to home yaw
+    autoPitch: 6,           // idle pitch sway amplitude (deg)
+    limits: {
+      pitch: [3, 58],
+      dist: [1.4, 6.5],
+      yaw: [-20, 24],       // relative to home yaw: single-viewpoint capture, sides break up beyond this
+      target: [-1.6, -0.4, -2.2, 1.6, 1.4, 1.2],
+    },
+  },
+  // fraction of the viewport height the orbit target is lifted, so the title has room below
+  lift: { portrait: 0.10, landscape: 0.14 },
+  fx: {
+    origin: [0, 0.3, -0.5],   // table centre
+    axisScale: [1, 1, 1],
+    band: 0.9,
+    density: 0.32,
+    point: 0.006,
+    tint: [0.30, 0.95, 1.0],
+    edge: [1.9, 3.6, 1.0, 0.12], // the room behind the group dissolves into points from 1.9 m to 3.6 m
+    reveal: { dotSpeed: 2.2, speed: 0.8, accel: 0.6, delay: 0.9, end: 16 },
+  },
+};
+
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
+
+const $ = (id) => document.getElementById(id);
+const body = document.body;
+
+function fail(msg) {
+  console.error(msg);
+  $('error-msg').textContent = String(msg?.message ?? msg);
+  $('error').hidden = false;
+  body.classList.remove('is-loading');
+}
+
+// ─── title: split letters for the staggered entrance, fit to width ────────
+const headline = $('headline');
+headline.innerHTML = [...headline.textContent].map((c, i) => `<span class="ch" style="--i:${i}">${c}</span>`).join('');
+function fitTitle() {
+  const vw = innerWidth, vh = innerHeight;
+  headline.style.setProperty('--title-size', '100px');
+  const w = headline.scrollWidth || 1;
+  const targetW = Math.min(vw * (vw < 760 ? 0.9 : 0.86), 1500);
+  const size = Math.min(100 * targetW / w, vh * (vw < 760 ? 0.11 : 0.19));
+  headline.style.setProperty('--title-size', `${size.toFixed(1)}px`);
+}
+document.fonts?.ready.then(fitTitle);
+fitTitle();
+setTimeout(() => body.classList.add('title-in'), 60);
+document.querySelectorAll('[data-scramble]').forEach((el, i) => scramble(el, { delay: 250 + i * 200, duration: 1100 }));
+
+const isTouch = matchMedia('(pointer: coarse)').matches;
+if (isTouch) $('hud-hint').textContent = 'DRAG · ROTATE  /  PINCH · ZOOM  /  2-FINGER · PAN';
+if (!document.fullscreenEnabled) $('btn-full').hidden = true;
+
+// ─── engine ───────────────────────────────────────────────────────────────
+const canvas = $('stage');
+let device;
+try {
+  device = await pc.createGraphicsDevice(canvas, {
+    deviceTypes: [pc.DEVICETYPE_WEBGL2],
+    antialias: false,
+    alpha: true,
+    powerPreference: 'high-performance',
+  });
+} catch (e) {
+  fail('Dieses Gerät unterstützt kein WebGL2. Bitte einen aktuellen Browser verwenden.');
+  throw e;
+}
+
+const maxRatio = Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2);
+let pixelRatio = maxRatio;
+device.maxPixelRatio = pixelRatio;
+
+const app = new pc.Application(canvas, { graphicsDevice: device });
+app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
+app.setCanvasResolution(pc.RESOLUTION_AUTO);
+app.scene.gsplat.antiAlias = false;
+
+const camera = new pc.Entity('camera');
+camera.addComponent('camera', {
+  clearColor: new pc.Color(0, 0, 0, 0),
+  fov: 45,
+  nearClip: 0.05,
+  farClip: 200,
+  toneMapping: pc.TONEMAP_LINEAR,
+  gammaCorrection: pc.GAMMA_SRGB,
+});
+app.root.addChild(camera);
+
+// Off-axis projection: lift the orbit target above screen centre so the title sits below the people.
+let lift = 0;
+function updateLens() {
+  const portrait = innerHeight > innerWidth;
+  const cam = camera.camera;
+  // portrait: keep the horizontal angle, so a wide group still fits a phone
+  cam.horizontalFov = portrait;
+  cam.fov = portrait ? 62 : 42;
+  lift = portrait ? SCENE.lift.portrait : SCENE.lift.landscape;
+  document.documentElement.style.setProperty('--target-y', `${(50 - lift * 50).toFixed(1)}%`);
+}
+camera.camera.calculateProjection = (mat) => {
+  const cam = camera.camera;
+  mat.setPerspective(cam.fov, cam.aspectRatio, cam.nearClip, cam.farClip, cam.horizontalFov);
+  mat.data[9] = -lift;
+};
+
+const orbit = new Orbit(camera, canvas, SCENE.view);
+orbit.onInteract = () => {
+  body.classList.add('interacting');
+  clearTimeout(orbit._t);
+  orbit._t = setTimeout(() => body.classList.remove('interacting'), 900);
+};
+
+const hud = new Hud();
+hud.setSplats(SCENE.splats);
+
+const fx = new SplatFx(app, SCENE.fx);
+
+function onResize() {
+  updateLens();
+  app.resizeCanvas();
+  fitTitle();
+}
+addEventListener('resize', onResize);
+onResize();
+
+// Adaptive resolution: drop the pixel ratio when the device cannot hold ~40 fps.
+let perfTime = 0, perfFrames = 0, perfSettled = 0;
+function adaptResolution(dt) {
+  if (!splatEntity || fx.revealing) return;
+  perfTime += dt; perfFrames++;
+  if (perfTime < 1.5) return;
+  const fps = perfFrames / perfTime;
+  perfTime = 0; perfFrames = 0;
+  if (fps < 38 && pixelRatio > 0.75) {
+    pixelRatio = Math.max(0.75, pixelRatio - 0.25);
+    device.maxPixelRatio = pixelRatio;
+    app.resizeCanvas();
+    perfSettled = 0;
+  } else if (fps > 57 && pixelRatio < maxRatio && ++perfSettled > 3) {
+    pixelRatio = Math.min(maxRatio, pixelRatio + 0.25);
+    device.maxPixelRatio = pixelRatio;
+    app.resizeCanvas();
+    perfSettled = 0;
+  }
+}
+
+let splatEntity = null;
+app.on('update', (dt) => {
+  orbit.update(dt);
+  fx.update(dt);
+  hud.update(dt, orbit, device);
+  adaptResolution(dt);
+  if (DEBUG && (debugT += dt) > 0.5) {
+    debugT = 0;
+    const t = orbit.target;
+    $('hud-mode').textContent = `Y${orbit.yaw.toFixed(0)} P${orbit.pitch.toFixed(0)} D${orbit.dist.toFixed(2)} T${t.x.toFixed(2)},${t.y.toFixed(2)},${t.z.toFixed(2)}`;
+  }
+});
+let debugT = 0;
+app.start();
+
+// ─── controls ─────────────────────────────────────────────────────────────
+const btnAuto = $('btn-auto');
+btnAuto.addEventListener('click', () => {
+  orbit.autoRotate = !orbit.autoRotate;
+  orbit.idle = orbit.idleDelay; // start right away when switched on
+  btnAuto.setAttribute('aria-pressed', String(orbit.autoRotate));
+});
+$('btn-reset').addEventListener('click', () => orbit.reset());
+$('btn-full').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+});
+
+// ─── loading ──────────────────────────────────────────────────────────────
+const ring = $('loader-prog');
+const RING_LEN = 2 * Math.PI * 54;
+function progress(received, total, state) {
+  const t = total ? Math.min(1, received / total) : 0;
+  ring.style.strokeDashoffset = String(RING_LEN * (1 - t));
+  $('loader-pct').innerHTML = `${String(Math.floor(t * 100)).padStart(3, '0')}<small>%</small>`;
+  $('loader-bytes').textContent = `${(received / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
+  if (state) $('loader-state').textContent = state;
+}
+
+async function download(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Splat-Datei nicht gefunden (${res.status}).`);
+  const total = Number(res.headers.get('content-length')) || SCENE.bytes;
+  if (!res.body) { const b = await res.blob(); progress(b.size, b.size); return b; }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  progress(0, total, 'RECEIVING');
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    progress(received, Math.max(total, received));
+  }
+  return new Blob(chunks);
+}
+
+function loadSplat(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const asset = new pc.Asset('scene', 'gsplat', { url, filename: 'scene.sog' });
+    asset.once('load', () => { URL.revokeObjectURL(url); resolve(asset); });
+    asset.once('error', (err) => { URL.revokeObjectURL(url); reject(err); });
+    app.assets.add(asset);
+    app.assets.load(asset);
+  });
+}
+
+try {
+  const blob = await download(SCENE.url);
+  $('loader-state').textContent = 'DECODING';
+  const asset = await loadSplat(blob);
+
+  splatEntity = new pc.Entity('splat');
+  splatEntity.setLocalEulerAngles(...SCENE.rotation);
+  splatEntity.addComponent('gsplat', { asset, unified: true });
+  app.root.addChild(splatEntity);
+  const n = asset.resource?.numSplats ?? asset.resource?.gsplatData?.numSplats;
+  if (n) hud.setSplats(n);
+
+  fx.attach();
+  $('loader-state').textContent = 'RESOLVING';
+  // give the sorter a frame before the wave starts
+  await new Promise((r) => setTimeout(r, 120));
+  body.classList.remove('is-loading');
+  body.classList.add('ready');
+  orbit.idle = orbit.idleDelay - 2.5; // auto-rotate starts a moment after the reveal
+  await fx.reveal();
+} catch (e) {
+  fail(e);
+}
+
+// ?debug shows camera values in the HUD, ?shot only exposes the objects (used for og-image.jpg)
+if (DEBUG || params.has('shot')) Object.assign(window, { app, pc, orbit, fx, camera, splat: () => splatEntity, SCENE });
