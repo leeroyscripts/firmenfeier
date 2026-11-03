@@ -1,4 +1,8 @@
-// Orbit camera: mouse, touch and pinch, with damping, flick inertia and idle auto-rotate.
+// Camera control: mouse, touch and pinch, with damping, flick inertia and idle auto-rotate.
+// Two modes, chosen per scene:
+//   orbit  around a target (group scans, captured from one side), yaw window per scene
+//   free   look around from where you stand and move through the scene (panorama scans):
+//          `target` is the eye, yaw/pitch are the view direction, nothing is limited but a box
 import * as pc from 'playcanvas';
 
 const DEG = Math.PI / 180;
@@ -10,24 +14,17 @@ export class Orbit {
   constructor(camera, element, view) {
     this.camera = camera;
     this.el = element;
-    this.home = view;
-    this.limits = view.limits;
-
-    this.target = new pc.Vec3(...view.target);
-    this.yaw = view.yaw; this.pitch = view.pitch; this.dist = view.dist;
-    this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
 
     this.vel = { yaw: 0, pitch: 0 };
     this.autoRotate = true;
-    this.autoSpeed = view.autoSpeed ?? 5;
-    this.autoDir = 1;
-    this.autoVel = 0;
-    this.autoRamp = 0;
-    this.swayT = 0;
     this.idle = 0;
     this.idleDelay = 4.5;
     this.interacting = false;
     this.onInteract = null;
+    this.keys = new Set();
+
+    this.target = new pc.Vec3();
+    this.setView(view);
 
     this.pointers = new Map();
     this.pinch = null;
@@ -45,6 +42,8 @@ export class Orbit {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('dblclick', () => this.reset());
     window.addEventListener('keydown', (e) => this._key(e));
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => this.keys.clear());
   }
 
   _touch() {
@@ -74,7 +73,8 @@ export class Orbit {
     if (this.pointers.size >= 2) {
       const s = this._pinchState();
       if (this.pinch) {
-        this.goal.dist = clamp(this.goal.dist * (this.pinch.span / Math.max(1, s.span)), this.limits.dist[0], this.limits.dist[1]);
+        if (this.free) this._walk(Math.log(Math.max(1, s.span) / Math.max(1, this.pinch.span)) * this.home.moveSpeed * 1.6);
+        else this.goal.dist = clamp(this.goal.dist * (this.pinch.span / Math.max(1, s.span)), this.limits.dist[0], this.limits.dist[1]);
         this._pan(s.cx - this.pinch.cx, s.cy - this.pinch.cy);
       }
       this.pinch = s;
@@ -83,11 +83,14 @@ export class Orbit {
       if (pan) this._pan(dx, dy);
       else {
         const k = this._rotSpeed();
-        const dyaw = -dx * k, dpitch = dy * k * 0.8;
+        // orbit: the scan turns with the finger; free: the world follows the finger
+        const dyaw = this.free ? dx * k : -dx * k;
+        const dpitch = dy * k * 0.8;
         this.goal.yaw = this._clampYaw(this.goal.yaw + dyaw);
         this.goal.pitch = clamp(this.goal.pitch + dpitch, this.limits.pitch[0], this.limits.pitch[1]);
         // velocity for flick inertia (deg/s), smoothed and capped
-        this.vel.yaw = clamp(this.vel.yaw * 0.6 + (dyaw / dt) * 0.4, -90, 90);
+        const cap = this.free ? 160 : 90;
+        this.vel.yaw = clamp(this.vel.yaw * 0.6 + (dyaw / dt) * 0.4, -cap, cap);
         this.vel.pitch = clamp(this.vel.pitch * 0.6 + (dpitch / dt) * 0.4, -30, 30);
       }
     }
@@ -111,25 +114,33 @@ export class Orbit {
   _wheel(e) {
     e.preventDefault();
     const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    this.goal.dist = clamp(this.goal.dist * Math.exp(delta * 0.0011), this.limits.dist[0], this.limits.dist[1]);
+    if (this.free) this._walk(-delta * 0.0025 * this.home.moveSpeed);
+    else this.goal.dist = clamp(this.goal.dist * Math.exp(delta * 0.0011), this.limits.dist[0], this.limits.dist[1]);
     this._touch();
   }
 
   _key(e) {
+    const key = e.key.toLowerCase();
+    // left/right arrows switch scenes (main.js); free mode walks with WASD (held), orbit turns with A/D
+    if (this.free && (key === 'shift' || (key.length === 1 && 'wasdqe'.includes(key)))) {
+      this.keys.add(key);
+      this._touch();
+      return;
+    }
     const step = e.shiftKey ? 15 : 5;
-    // left/right arrows switch scenes (main.js); A/D turn
+    const look = this.free ? -1 : 1; // free: up arrow looks up
     const map = {
       a: () => (this.goal.yaw = this._clampYaw(this.goal.yaw + step)),
       d: () => (this.goal.yaw = this._clampYaw(this.goal.yaw - step)),
-      ArrowUp: () => (this.goal.pitch = clamp(this.goal.pitch + step, ...this.limits.pitch)),
-      ArrowDown: () => (this.goal.pitch = clamp(this.goal.pitch - step, ...this.limits.pitch)),
+      arrowup: () => (this.goal.pitch = clamp(this.goal.pitch + step * look, ...this.limits.pitch)),
+      arrowdown: () => (this.goal.pitch = clamp(this.goal.pitch - step * look, ...this.limits.pitch)),
       '+': () => (this.goal.dist = clamp(this.goal.dist * 0.88, ...this.limits.dist)),
       '=': () => (this.goal.dist = clamp(this.goal.dist * 0.88, ...this.limits.dist)),
       '-': () => (this.goal.dist = clamp(this.goal.dist * 1.14, ...this.limits.dist)),
       r: () => this.reset(),
     };
-    const fn = map[e.key];
-    if (fn) { fn(); this._touch(); }
+    const fn = map[key];
+    if (fn && !(this.free && (key === '+' || key === '=' || key === '-'))) { fn(); this._touch(); }
   }
 
   _pinchState() {
@@ -138,8 +149,10 @@ export class Orbit {
   }
 
   _rotSpeed() {
-    // a full swipe across the screen covers ~120 deg, enough for the narrow capture window
-    return 120 / Math.max(320, Math.min(this.el.clientWidth, this.el.clientHeight * 1.4));
+    // orbit: a full swipe across the screen covers ~120 deg, enough for the narrow capture window;
+    // free: about 200 deg, so turning around takes two swipes
+    const deg = this.free ? 200 : 120;
+    return deg / Math.max(320, Math.min(this.el.clientWidth, this.el.clientHeight * 1.4));
   }
 
   _clampYaw(yaw) {
@@ -148,29 +161,47 @@ export class Orbit {
     return clamp(yaw, this.home.yaw + yl[0], this.home.yaw + yl[1]);
   }
 
-  _pan(dx, dy) {
-    const cam = this.camera.camera;
-    const h = this.el.clientHeight || 1;
-    const fovV = cam.horizontalFov ? 2 * Math.atan(Math.tan(cam.fov * DEG / 2) / cam.aspectRatio) : cam.fov * DEG;
-    const k = 2 * Math.tan(fovV / 2) * this.goal.dist / h;
-    const right = this.camera.right.clone().mulScalar(-dx * k);
-    const up = this.camera.up.clone().mulScalar(dy * k);
-    const t = this.goal.target.add(right).add(up);
-    // keep the target inside the scene box
+  _clampTarget(t) {
     const b = this.limits.target;
     t.set(clamp(t.x, b[0], b[3]), clamp(t.y, b[1], b[4]), clamp(t.z, b[2], b[5]));
   }
 
-  // Cut to another scene: new home and limits, camera placed at home at once.
+  _pan(dx, dy) {
+    const cam = this.camera.camera;
+    const h = this.el.clientHeight || 1;
+    const fovV = cam.horizontalFov ? 2 * Math.atan(Math.tan(cam.fov * DEG / 2) / cam.aspectRatio) : cam.fov * DEG;
+    // free mode slides as if the finger held a point a few metres away
+    const depth = this.free ? this.home.moveSpeed * 2.5 : this.goal.dist;
+    const k = 2 * Math.tan(fovV / 2) * depth / h;
+    const right = this.camera.right.clone().mulScalar(-dx * k);
+    const up = this.camera.up.clone().mulScalar(dy * k);
+    this._clampTarget(this.goal.target.add(right).add(up));
+  }
+
+  // free mode: view direction from yaw/pitch (yaw 0 looks along -z, positive pitch looks up)
+  _forward(yaw, pitch, out = new pc.Vec3()) {
+    const cp = Math.cos(pitch * DEG);
+    return out.set(-Math.sin(yaw * DEG) * cp, Math.sin(pitch * DEG), -Math.cos(yaw * DEG) * cp);
+  }
+
+  // free mode: move the eye along the view direction (negative = back)
+  _walk(amount) {
+    const f = this._forward(this.goal.yaw, this.goal.pitch);
+    this._clampTarget(this.goal.target.add(f.mulScalar(amount)));
+  }
+
+  // New scene: home, limits and mode; the camera is placed at home at once.
   setView(view) {
     this.home = view;
     this.limits = view.limits;
+    this.free = view.mode === 'free';
     this.autoSpeed = view.autoSpeed ?? 5;
     this.target.set(...view.target);
-    this.yaw = view.yaw; this.pitch = view.pitch; this.dist = view.dist;
+    this.yaw = view.yaw; this.pitch = view.pitch; this.dist = view.dist ?? 0;
     this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
     this.vel.yaw = this.vel.pitch = 0;
     this.autoDir = 1; this.autoVel = 0; this.autoRamp = 0; this.swayT = 0;
+    this.keys.clear();
   }
 
   reset() {
@@ -178,7 +209,7 @@ export class Orbit {
     // take the short way home
     this.goal.yaw = this.yaw + wrap180(h.yaw - this.yaw);
     this.goal.pitch = h.pitch;
-    this.goal.dist = h.dist;
+    this.goal.dist = h.dist ?? 0;
     this.goal.target.set(...h.target);
     this.vel.yaw = this.vel.pitch = 0;
     this.autoDir = 1;
@@ -196,7 +227,21 @@ export class Orbit {
       this.vel.yaw *= f; this.vel.pitch *= f;
     }
 
-    // idle auto-rotate: soft start, eased sway inside autoRange, pitch breathes around home
+    // free mode: held keys walk (W/S), strafe (A/D) and rise (E/Q)
+    if (this.free && this.keys.size) {
+      const v = this.home.moveSpeed * (this.keys.has('shift') ? 2 : 1) * dt;
+      const k = this.keys;
+      const fwd = this._forward(g.yaw, 0);
+      const right = new pc.Vec3(-fwd.z, 0, fwd.x);
+      const move = new pc.Vec3()
+        .add(fwd.mulScalar((k.has('w') - k.has('s')) * v))
+        .add(right.mulScalar((k.has('d') - k.has('a')) * v));
+      move.y += (k.has('e') - k.has('q')) * v;
+      this._clampTarget(g.target.add(move));
+      this.idle = 0;
+    }
+
+    // idle auto-rotate: soft start, eased sway inside autoRange (or all the way round), pitch breathes around home
     this.idle += dt;
     if (this.autoRotate && !this.interacting && this.idle > this.idleDelay) {
       this.autoRamp = Math.min(1, this.autoRamp + dt / 2.5);
@@ -223,9 +268,17 @@ export class Orbit {
     const k = damp(this.interacting ? 14 : 7, dt);
     this.yaw += (g.yaw - this.yaw) * k;
     this.pitch += (g.pitch - this.pitch) * k;
-    this.dist += (g.dist - this.dist) * damp(7, dt);
     this.target.lerp(this.target, g.target, damp(8, dt));
 
+    if (this.free) {
+      this.camera.setPosition(this.target);
+      this.camera.lookAt(this._forward(this.yaw, this.pitch).add(this.target));
+      // readout: how far you walked from the capture point
+      this.dist = this.target.distance(new pc.Vec3(...this.home.target));
+      return;
+    }
+
+    this.dist += (g.dist - this.dist) * damp(7, dt);
     const cy = Math.cos(this.pitch * DEG);
     const pos = new pc.Vec3(
       this.target.x + Math.sin(this.yaw * DEG) * cy * this.dist,
@@ -237,5 +290,9 @@ export class Orbit {
   }
 
   get heading() { return ((this.yaw % 360) + 360) % 360; }
-  get zoom01() { const [a, b] = this.limits.dist; return 1 - (Math.log(this.dist / a) / Math.log(b / a)); }
+  get zoom01() {
+    if (this.free) return 1 - Math.min(1, this.dist / (this.home.reach ?? 10));
+    const [a, b] = this.limits.dist;
+    return 1 - (Math.log(this.dist / a) / Math.log(b / a));
+  }
 }

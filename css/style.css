@@ -178,6 +178,7 @@ body { position: fixed; inset: 0; }
 
 .hud-block { position: absolute; display: grid; gap: 1px; }
 .hud-block .row { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.hud-block .row[hidden] { display: none; }
 .hud-block .label { color: var(--dim); min-width: 4.2em; }
 .hud-block .val { color: var(--fg); }
 .hud-block .dim .label, .hud-block .dim .val { opacity: .8; }
@@ -290,6 +291,21 @@ body.interacting .reticle { opacity: .9; }
 .prev .nav-label { left: 0; }
 .next .nav-label { right: 0; }
 body.is-loading .nav-btn { opacity: 0; pointer-events: none; }
+
+/* one-line tip when a scene is steered differently (free look) */
+.scene-tip {
+  position: fixed; z-index: 4; left: 50%; top: calc(var(--safe-t) + 128px);
+  transform: translate(-50%, -6px);
+  max-width: calc(100vw - 2 * var(--gut) - 24px);
+  padding: 7px 12px 7px 14px;
+  font: 400 10px/1.5 var(--mono); letter-spacing: .2em; text-align: center;
+  color: var(--accent); background: rgba(2, 3, 4, .55);
+  border: 1px solid var(--accent-dim);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .8s var(--ease), transform .8s var(--ease);
+}
+.scene-tip.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ───────────────────────── title ───────────────────────── */
 

@@ -53,8 +53,8 @@ const SCENES = [
     title: 'DONIKA',
     scan: '002 · PORTRAIT',
     url: 'assets/donika.sog',
-    bytes: 24680450,
-    splats: 1500000,
+    bytes: 45393893,
+    splats: 2951528,
     rotation: [-90, 0, 0],
     view: {
       // the capture is a camera arc made from one photo: close to the photo the face stays clean,
@@ -78,6 +78,44 @@ const SCENES = [
       origin: [0.15, 0.35, -0.45],   // table between the glasses
       edge: [1.4, 3.0, 1.0, 0.12],
       reveal: { dotSpeed: 2.2, speed: 0.8, accel: 0.6, delay: 0.9, end: 9 },
+    },
+  },
+  {
+    id: 'bujanovac',
+    title: 'BUJANOVAC',
+    scan: '003 · STREET',
+    credit: 'STREET VIEW PANORAMAS',
+    url: 'assets/bujanovac.sog',
+    bytes: 59215237,
+    splats: 3979022,
+    rotation: [-90, 0, 0],
+    // Spirula's "up" is 36.5 deg off; all seven panoramas agree on the true vertical
+    level: { axis: [-0.07685, -0.99704, 0], angle: 36.488 },
+    scale: 29,               // scan units -> metres (panorama camera 0.085 above the street = 2.5 m)
+    far: 800,
+    view: {
+      // free look from the street, between the 2nd and 3rd of seven panoramas along Kosovska
+      mode: 'free',
+      target: [-7.98, -0.96, -9.28], // eye, 2.1 m above the street
+      yaw: 0, pitch: -3,
+      moveSpeed: 5,           // m/s with WASD; scroll and pinch scale with it
+      reach: 40,              // HUD bar: distance walked from the capture point
+      autoSpeed: 4,           // slow sweep all the way round while idle
+      autoPitch: 3,
+      limits: {
+        pitch: [-80, 80],
+        target: [-45, -2.8, -65, 35, 40, 60], // stays above the street, otherwise free
+      },
+    },
+    lift: { portrait: 0.06, landscape: 0.06 },
+    fx: {
+      ...FX,
+      origin: [-7.98, -0.96, -9.28],
+      band: 3,
+      point: 0.012,
+      edge: [30, 85, 1.0, 0.12],   // the street stays, the far distance turns into a field of points
+      reveal: { dotSpeed: 9, speed: 3, accel: 0.6, delay: 0.7, end: 95 },
+      dissolve: { speed: 3, accel: 1.8, fade: 4, drift: 6, end: 65 },
     },
   },
 ];
@@ -136,7 +174,12 @@ function titleIn(text) {
 }
 
 const isTouch = matchMedia('(pointer: coarse)').matches;
-if (isTouch) $('hud-hint').textContent = 'DRAG · ROTATE  /  PINCH · ZOOM  /  2-FINGER · PAN';
+// phones: only the scene on screen is kept on the GPU; the next one is downloaded but decoded on arrival
+const LEAN = isTouch || (navigator.deviceMemory ?? 8) < 8;
+const HINTS = isTouch
+  ? { orbit: 'DRAG · ROTATE  /  PINCH · ZOOM  /  2-FINGER · PAN', free: 'DRAG · LOOK  /  PINCH · WALK  /  2-FINGER · SLIDE' }
+  : { orbit: 'DRAG · ROTATE  /  SCROLL · ZOOM  /  RIGHT-DRAG · PAN  /  ← → · SCENE', free: 'DRAG · LOOK  /  SCROLL · WALK  /  WASD · MOVE  /  ← → · SCENE' };
+const TIPS = { free: isTouch ? 'WISCHEN ZUM UMSCHAUEN · ZWEI FINGER ZUM GEHEN' : 'ZIEHEN ZUM UMSCHAUEN · SCROLLEN ODER WASD ZUM GEHEN' };
 if (!document.fullscreenEnabled) $('btn-full').hidden = true;
 
 // ─── engine ───────────────────────────────────────────────────────────────
@@ -155,7 +198,7 @@ try {
 }
 
 const maxRatio = Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2);
-let pixelRatio = maxRatio;
+let pixelRatio = Math.min(maxRatio, isTouch ? 1.5 : 2); // phones start a step lower and climb if they can
 device.maxPixelRatio = pixelRatio;
 
 const app = new pc.Application(canvas, { graphicsDevice: device });
@@ -217,7 +260,13 @@ addEventListener('resize', onResize);
 // Labels, HUD, address and lens for the current scene.
 function showScene() {
   const s = scene();
+  const mode = s.view.mode === 'free' ? 'free' : 'orbit';
   $('hud-scan').textContent = s.scan;
+  $('hud-hint').textContent = HINTS[mode];
+  $('hud-src').textContent = s.credit ?? '';
+  $('hud-src').parentElement.hidden = !s.credit;
+  camera.camera.nearClip = s.near ?? 0.05;
+  camera.camera.farClip = s.far ?? 200;
   hud.setSplats(s.splats);
   const label = (n) => `${String(SCENES.indexOf(n) + 1).padStart(2, '0')} · ${n.title}`;
   $('nav-prev-label').textContent = label(neighbour(-1));
@@ -298,6 +347,7 @@ function progress(s, state) {
 }
 
 async function download(s) {
+  s.received = 0; s.total = s.bytes;
   const res = await fetch(s.url);
   if (!res.ok) throw new Error(`Splat-Datei nicht gefunden (${res.status}).`);
   s.total = Number(res.headers.get('content-length')) || s.bytes;
@@ -327,25 +377,59 @@ function decode(blob, s) {
   });
 }
 
+// Download once (the bytes wait until the scene is decoded).
+function fetchScene(s) {
+  s.fetching ??= download(s);
+  s.fetching.catch(() => { s.fetching = null; }); // a failed download may be retried
+  return s.fetching;
+}
+
 // Download and decode once; the entity waits disabled until its scene is shown.
 function load(s) {
   s.loading ??= (async () => {
-    s.received = 0; s.total = s.bytes;
-    const blob = await download(s);
+    const blob = await fetchScene(s);
     progress(s, 'DECODING');
     const asset = await decode(blob, s);
+    s.fetching = null; // the splats live on the GPU now
     const e = new pc.Entity(s.id);
-    e.setLocalEulerAngles(...s.rotation);
+    const rot = new pc.Quat().setFromEulerAngles(...s.rotation);
+    if (s.level) rot.mul(new pc.Quat().setFromAxisAngle(new pc.Vec3(...s.level.axis), s.level.angle));
+    e.setLocalRotation(rot);
+    if (s.scale) e.setLocalScale(s.scale, s.scale, s.scale);
     e.addComponent('gsplat', { asset, unified: true });
     e.enabled = false;
     app.root.addChild(e);
     s.entity = e;
+    s.asset = asset;
     const n = asset.resource?.numSplats ?? asset.resource?.gsplatData?.numSplats;
     if (n) s.splats = n;
     return s;
   })();
-  s.loading.catch(() => { s.loading = null; }); // a failed download may be retried
+  s.loading.catch(() => { s.loading = null; });
   return s.loading;
+}
+
+// Phones: free the GPU memory of a scene that is no longer shown (it reloads from the browser cache).
+function unload(s) {
+  if (!s.entity) return;
+  s.entity.destroy();
+  s.asset.unload();
+  app.assets.remove(s.asset);
+  s.entity = s.asset = s.loading = null;
+}
+
+function preload(s) {
+  (LEAN ? fetchScene(s) : load(s)).catch(() => {});
+}
+
+// short on-screen tip when a scene works differently (free look)
+let tipTimer = 0;
+function showTip(text) {
+  const el = $('scene-tip');
+  clearTimeout(tipTimer);
+  el.textContent = text ?? '';
+  el.classList.toggle('show', !!text);
+  if (text) tipTimer = setTimeout(() => el.classList.remove('show'), 5200);
 }
 
 // Bring the current scene in: wait for its data if needed, then the point-cloud reveal.
@@ -355,7 +439,7 @@ async function enter() {
   const s = scene(), my = token;
   if (!s.entity) {
     waitingFor = s;
-    progress(s, s.received ? 'RECEIVING' : 'LINKING');
+    progress(s, s.received >= s.total ? 'DECODING' : s.received ? 'RECEIVING' : 'LINKING');
     hud.setMode('LINK');
     await load(s);
     waitingFor = null;
@@ -372,11 +456,12 @@ async function enter() {
   phase = 'reveal';
   const revealed = fx.reveal();
   if (my) titleIn(s.title); // the first title comes in with the page
-  load(neighbour(1)).catch(() => {}); // preload the next scene in the background
+  showTip(TIPS[s.view.mode]);
+  preload(neighbour(1)); // the next scene loads in the background
   await revealed;
   if (my !== token) return; // a newer switch took over
   phase = 'idle';
-  hud.setMode('ORBIT');
+  hud.setMode(s.view.mode === 'free' ? 'FREE' : 'ORBIT');
 }
 
 async function go(step) {
@@ -384,11 +469,13 @@ async function go(step) {
   token++;
   phase = 'dissolve';
   const from = scene();
-  load(neighbour(step)).catch(() => {});
+  preload(neighbour(step));
   titleOut();
+  showTip(null);
   hud.setMode('DISSOLVE');
   await fx.dissolve();
   from.entity.enabled = false;
+  if (LEAN) unload(from);
   cur = SCENES.indexOf(neighbour(step));
   phase = 'load';
   orbit.setView(homeView(scene()));

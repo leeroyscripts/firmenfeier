@@ -54,6 +54,7 @@
       <div class="row"><span class="dot live"></span><span class="label" data-scramble>GS//VIEWER</span><span class="val">v1.0</span></div>
       <div class="row dim"><span class="label">SCAN</span><span class="val" id="hud-scan">001 · GROUP</span></div>
       <div class="row dim"><span class="label">MODE</span><span class="val" id="hud-mode">ORBIT</span></div>
+      <div class="row dim" hidden><span class="label">SRC</span><span class="val" id="hud-src"></span></div>
     </div>
 
     <div class="hud-heading">
@@ -85,6 +86,8 @@
 
     <div class="hud-hint" id="hud-hint">DRAG&nbsp;·&nbsp;ROTATE &nbsp; / &nbsp; SCROLL&nbsp;·&nbsp;ZOOM &nbsp; / &nbsp; RIGHT-DRAG&nbsp;·&nbsp;PAN &nbsp; / &nbsp; ←&nbsp;→&nbsp;·&nbsp;SCENE</div>
   </div>
+
+  <div class="scene-tip" id="scene-tip" role="status"></div>
 
   <!-- Scene switch -->
   <button type="button" class="nav-btn prev" id="btn-prev" aria-label="Zurück">
