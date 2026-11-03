@@ -113,7 +113,7 @@ const SCENES = [
       origin: [-7.98, -0.96, -9.28],
       band: 3,
       point: 0.012,
-      edge: [30, 85, 1.0, 0.12],   // the street stays, the far distance turns into a field of points
+      edge: [30, 85, 0, 1],        // no edge dissolve: the whole street shows as captured, thin parts included
       reveal: { dotSpeed: 9, speed: 3, accel: 0.6, delay: 0.7, end: 95 },
       dissolve: { speed: 3, accel: 1.8, fade: 4, drift: 6, end: 65 },
     },

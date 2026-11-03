@@ -139,11 +139,6 @@ body { position: fixed; inset: 0; }
     radial-gradient(120% 90% at 50% 42%, transparent 52%, rgba(0, 0, 0, .55) 86%, rgba(0, 0, 0, .9) 100%),
     linear-gradient(to top, rgba(2, 3, 4, .92) 0%, rgba(2, 3, 4, .55) 18%, transparent 38%);
 }
-.fx-scan {
-  position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, .025) 0 1px, transparent 1px 3px);
-  mix-blend-mode: overlay;
-}
 .fx-grain {
   position: fixed; inset: -50%; z-index: 2; pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
