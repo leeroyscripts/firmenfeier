@@ -1,7 +1,7 @@
 # FIRMENFEIER · Flugmodus X 405x
 
-Interaktive Gaussian-Splat-Seite mit drei Szenen: Der Scan baut sich als Punktwolke auf,
-der Raum dahinter löst sich in schwebende Punkte auf, darüber liegt ein HUD.
+Interaktive Gaussian-Splat-Seite mit drei Szenen: Der Scan baut sich als Punktwolke auf und zeigt sich
+dann vollständig, wie er aufgenommen wurde; darüber liegt ein HUD.
 Die Pfeile links und rechts (oder die Pfeiltasten) wechseln die Szene: Der Splat zerfällt in Punkte,
 der nächste baut sich auf, der Titel wechselt (FIRMENFEIER → DONIKA → BUJANOVAC → …).
 In BUJANOVAC steht man frei auf der Straße: Ziehen/Wischen schaut rundum (ohne Grenze), Mausrad oder
@@ -62,7 +62,7 @@ Ziel: https://leeroyscripts.github.io/firmenfeier/ (Repo `leeroyscripts/firmenfe
 - **Startansicht, Grenzen, Auto-Dreh:** `view` der jeweiligen Szene in `SCENES` (`js/main.js`). Beide Aufnahmen
   stammen aus einem engen Blickwinkel, deshalb ist das Drehen begrenzt (Gruppe −20° … +24°, Donika −14° … +16°
   um die Startansicht); weiter seitlich zerfällt der Scan. `portraitDist` = Abstand im Hochformat.
-- **Auflösen am Rand:** `fx.edge` = [Beginn m, Ende m, Stärke 0–1, Anteil Punkte, die weit draußen bleiben].
+- **Auflösen am Rand:** `fx.edge` = [Beginn m, Ende m, Stärke 0–1, Anteil Punkte, die weit draußen bleiben]. Steht überall auf Stärke 0 (aus): Punkte gibt es nur beim Szenenwechsel.
 - **Freier Blick (BUJANOVAC):** `view.mode: 'free'`, `target` = Augenpunkt, `moveSpeed` in m/s, `limits.target` = Kasten,
   in dem man sich bewegen darf. `level` richtet den Scan am Horizont der Panoramen aus (Spirula lag 36,5° daneben),
   `scale: 29` macht aus Scan-Einheiten Meter.

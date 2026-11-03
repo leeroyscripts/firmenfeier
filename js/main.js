@@ -44,7 +44,7 @@ const SCENES = [
     fx: {
       ...FX,
       origin: [0, 0.3, -0.5],   // table centre
-      edge: [1.9, 3.6, 1.0, 0.12], // the room behind the group dissolves into points from 1.9 m to 3.6 m
+      edge: [1.9, 3.6, 0, 1],      // no edge dissolve while viewing: the room shows as captured (points only in transitions)
       reveal: { dotSpeed: 2.2, speed: 0.8, accel: 0.6, delay: 0.9, end: 16 },
     },
   },
@@ -76,7 +76,7 @@ const SCENES = [
     fx: {
       ...FX,
       origin: [0.15, 0.35, -0.45],   // table between the glasses
-      edge: [1.4, 3.0, 1.0, 0.12],
+      edge: [1.4, 3.0, 0, 1],
       reveal: { dotSpeed: 2.2, speed: 0.8, accel: 0.6, delay: 0.9, end: 9 },
     },
   },
