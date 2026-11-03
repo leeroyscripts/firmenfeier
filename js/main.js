@@ -489,7 +489,7 @@ async function go(step) {
 }
 
 // ?debug shows camera values in the HUD, ?shot only exposes the objects (used for og-image.jpg)
-if (DEBUG || params.has('shot')) Object.assign(window, { app, pc, orbit, fx, camera, scene, SCENES, go });
+if (DEBUG || params.has('shot')) Object.assign(window, { app, pc, orbit, fx, camera, scene, SCENES, go, state: () => ({ phase, token, cur }) });
 
 try {
   waitingFor = scene();
